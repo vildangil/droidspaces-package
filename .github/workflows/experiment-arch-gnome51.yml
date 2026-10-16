@@ -2,6 +2,10 @@ name: Experiment - Arch GNOME 51 AnLand port
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/experiment-arch-gnome51.yml
 
 permissions:
   contents: read

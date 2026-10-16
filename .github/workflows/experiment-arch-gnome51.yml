@@ -25,10 +25,10 @@ jobs:
           ANLAND_REF: port/gnome-51
         run: |
           set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/.gnome51-test"
+          mkdir -p "$GITHUB_WORKSPACE/gnome51-test"
           docker run --rm --platform linux/arm64 -i \
             -e ANLAND_REPO -e ANLAND_REF \
-            -v "$GITHUB_WORKSPACE/.gnome51-test:/output" \
+            -v "$GITHUB_WORKSPACE/gnome51-test:/output" \
             ogarcia/archlinux:latest bash -s <<'ARCH_TEST'
           set -euo pipefail
           pacman -Syu --noconfirm
@@ -84,6 +84,6 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: arch-gnome51-experiment-${{ github.run_id }}
-          path: .gnome51-test/
+          path: gnome51-test/
           if-no-files-found: warn
           retention-days: 7

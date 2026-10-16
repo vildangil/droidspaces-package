@@ -1,0 +1,89 @@
+name: Experiment - Arch GNOME 51 AnLand port
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/experiment-arch-gnome51.yml
+
+permissions:
+  contents: read
+
+jobs:
+  rebase-and-build:
+    name: Rebase and compile Mutter 51.1 (ARM64, no release)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Try AnLand backend rebase and native ARM64 build
+        shell: bash
+        env:
+          ANLAND_REPO: https://github.com/vildangil/anland.git
+          ANLAND_REF: port/gnome-51
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/.gnome51-test"
+          docker run --rm --platform linux/arm64 -i \
+            -e ANLAND_REPO -e ANLAND_REF \
+            -v "$GITHUB_WORKSPACE/.gnome51-test:/output" \
+            ogarcia/archlinux:latest bash -s <<'ARCH_TEST'
+          set -euo pipefail
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git ca-certificates sudo
+          useradd -m -s /bin/bash builder
+          printf 'builder ALL=(root) NOPASSWD: /usr/bin/pacman\n' > /etc/sudoers.d/builder
+          chmod 0440 /etc/sudoers.d/builder
+          printf '\nPACMAN_AUTH=(sudo)\n' >> /etc/makepkg.conf
+          chown -R builder:builder /output
+
+          git init -q /tmp/anland
+          git -C /tmp/anland remote add origin "$ANLAND_REPO"
+          git -C /tmp/anland fetch -q --depth=1 origin "$ANLAND_REF"
+          git -C /tmp/anland checkout -q --detach FETCH_HEAD
+          cd /tmp/anland/producers/gnome/Arch_v5
+          grep -qx 'pkgver=51.1' PKGBUILD || {
+            echo "Expected port branch to package Mutter 51.1" >&2
+            exit 1
+          }
+
+          # The old patch was authored for 50.5, not for 51.1. First try
+          # a real three-way rebase, never git-apply --reject with lost hunks.
+          export PORT_REPORT_DIR=/output
+          if ! bash port-mutter-51.sh /output/mutter-51.1.patch; then
+            echo "::error::AnLand backend rebase failed. Inspect the uploaded conflict report."
+            exit 1
+          fi
+          cp /output/mutter-51.1.patch mutter.patch
+
+          # Build as non-root (makepkg requirement); packages remain in /output.
+          chown -R builder:builder /tmp/anland /output
+          su -s /bin/bash builder -c \
+            'cd /tmp/anland/producers/gnome/Arch_v5 && ANLAND_INSTALL=0 WORKDIR=/output ./build.sh --noconfirm'
+          chmod -R a+rX /output
+
+          mutter_pkg="$(find /output/packages -maxdepth 1 -type f -name 'mutter-51.1-*.pkg.tar.*' | head -n 1)"
+          xwayland_pkg="$(find /output/packages -maxdepth 1 -type f -name 'xorg-xwayland-*.pkg.tar.*' | head -n 1)"
+          test -n "$mutter_pkg" && test -n "$xwayland_pkg"
+          echo "Mutter package: $mutter_pkg"
+          echo "Xwayland package: $xwayland_pkg"
+          LC_ALL=C pacman -Qip "$mutter_pkg" | grep -E '^(Name|Version|Provides)' || true
+          # ABI smoke test in the build container, not the Android device.
+          pacman -S --noconfirm --needed gnome-shell
+          cp /etc/pacman.conf /tmp/pacman-local.conf
+          sed -i -E '/^[[:space:]]*LocalFileSigLevel[[:space:]]*=/d' /tmp/pacman-local.conf
+          sed -i '/^\[options\]$/a LocalFileSigLevel = Optional' /tmp/pacman-local.conf
+          pacman --config /tmp/pacman-local.conf -U --noconfirm "$mutter_pkg" "$xwayland_pkg"
+          pacman -Q mutter gnome-shell xorg-xwayland
+          ARCH_TEST
+
+      - name: Archive experimental logs and packages
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: arch-gnome51-experiment-${{ github.run_id }}
+          path: .gnome51-test/
+          if-no-files-found: warn
+          retention-days: 7

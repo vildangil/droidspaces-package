@@ -32,7 +32,7 @@ jobs:
             ogarcia/archlinux:latest bash -s <<'ARCH_TEST'
           set -euo pipefail
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed base-devel git ca-certificates sudo
+          pacman -S --noconfirm --needed base-devel git ca-certificates sudo python
           useradd -m -s /bin/bash builder
           printf 'builder ALL=(root) NOPASSWD: /usr/bin/pacman\n' > /etc/sudoers.d/builder
           chmod 0440 /etc/sudoers.d/builder
@@ -83,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: arch-gnome51-experiment-${{ github.run_id }}
+          name: arch-gnome51-experiment-${{ github.run_id }}-${{ github.run_attempt }}
           path: gnome51-test/
           if-no-files-found: warn
           retention-days: 7

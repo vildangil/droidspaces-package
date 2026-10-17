@@ -79,7 +79,18 @@ jobs:
           pacman -Q mutter gnome-shell xorg-xwayland
           ARCH_TEST
 
-      - name: Archive experimental logs and packages
+      - name: Archive successfully compiled and installable experimental packages
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: arch-gnome51-pkgs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            gnome51-test/packages/mutter-51.1-*.pkg.tar.*
+            gnome51-test/packages/xorg-xwayland-*.pkg.tar.*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Archive experimental logs and patches
         if: always()
         uses: actions/upload-artifact@v6
         with:
